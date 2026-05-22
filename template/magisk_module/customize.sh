@@ -1,84 +1,61 @@
-SKIPUNZIP=1
+# VoidWalker module installer.
+#
+# We do NOT set SKIPUNZIP=1: Magisk auto-extracts the zip to $MODPATH so
+# module.prop / zygisk/<abi>.so / webroot/ / config.json.example all land
+# in their final locations without any manual "extract" plumbing. This
+# script only handles the bits Magisk can't: unpacking the bundled gadget
+# .xz files into /data/local/tmp/libsec/ and dropping a sane default
+# gadget config.
 
 MODULE_ID=@MODULE_ID@
-
 TMP_MODULE_DIR=/data/local/tmp/libsec
 
 if [ "$ARCH" != "arm" ] && [ "$ARCH" != "arm64" ] && [ "$ARCH" != "x86" ] && [ "$ARCH" != "x64" ]; then
   abort "! Unsupported platform: $ARCH"
-else
-  ui_print "- Device platform: $ARCH"
 fi
+ui_print "- Device platform: $ARCH"
 
-ui_print "- Extracting verify.sh"
-unzip -o "$ZIPFILE" 'verify.sh' -d "$TMPDIR" >&2
-if [ ! -f "$TMPDIR/verify.sh" ]; then
-  ui_print    "*********************************************************"
-  ui_print    "! Unable to extract verify.sh!"
-  ui_print    "! This zip may be corrupted, please try downloading again"
-  abort "*********************************************************"
-fi
-. $TMPDIR/verify.sh
-
-ui_print "- Extracting module files"
-extract "$ZIPFILE" 'module.prop' "$MODPATH"
-extract "$ZIPFILE" 'uninstall.sh' "$MODPATH"
-
-mkdir -p "$MODPATH/webroot"
-extract "$ZIPFILE" 'webroot/index.html' "$MODPATH/webroot" true
-extract "$ZIPFILE" 'webroot/main.js' "$MODPATH/webroot" true
-
-LIB32_NAME="armeabi-v7a.so"
-LIB64_NAME="arm64-v8a.so"
-LIB32_DEST="$MODPATH/zygisk"
-LIB64_DEST="$MODPATH/zygisk"
 BUSYBOX_BIN=/data/adb/magisk/busybox
-
-if [ ! -f $BUSYBOX_BIN ]; then
-  BUSYBOX_BIN=/data/adb/ksu/bin/busybox
-fi
-
-if [ ! -f $BUSYBOX_BIN ]; then
-  BUSYBOX_BIN=/data/adb/ap/bin/busybox
-fi
-
-if [ ! -f $BUSYBOX_BIN ]; then
-  abort "! unable to locate busybox"
-fi
-
+[ -f $BUSYBOX_BIN ] || BUSYBOX_BIN=/data/adb/ksu/bin/busybox
+[ -f $BUSYBOX_BIN ] || BUSYBOX_BIN=/data/adb/ap/bin/busybox
+[ -f $BUSYBOX_BIN ] || abort "! unable to locate busybox"
 ui_print "- Using busybox: $BUSYBOX_BIN"
 
-[ "$ARCH" = "x86" ] || [ "$ARCH" = "x64" ] && LIB32_NAME="x86.so"
-[ "$ARCH" = "x86" ] || [ "$ARCH" = "x64" ] && LIB64_NAME="x86_64.so"
-
-mkdir -p "$LIB32_DEST"
-mkdir -p "$LIB64_DEST"
-
-ui_print "- Extracting 32-bit libraries"
-extract "$ZIPFILE" "lib/$LIB32_NAME" "$LIB32_DEST" true
-
-if [ "$IS64BIT" = true ]; then
-  ui_print "- Extracting 64-bit libraries"
-  extract "$ZIPFILE" "lib/$LIB64_NAME" "$LIB64_DEST" true
-fi
-
-ui_print "- Extracting bundled payload"
-
 mkdir -p "$TMP_MODULE_DIR"
-extract "$ZIPFILE" "gadget/libgadget-$ARCH.so.xz" "$TMP_MODULE_DIR" true
-mv "$TMP_MODULE_DIR/libgadget-$ARCH.so.xz" "$TMP_MODULE_DIR/libsecmon.so.xz"
-$BUSYBOX_BIN unxz "$TMP_MODULE_DIR/libsecmon.so.xz"
+ui_print "- Payload directory: $TMP_MODULE_DIR"
 
-if [ "$IS64BIT" = true ]; then
-  ARCH32="arm"
-  [ "$ARCH" = "x64" ] && ARCH32="x86"
+# Map device $ARCH to the gadget arch directory we shipped (downloaded
+# by gradle's downloadFrida task, currently arm and arm64 only).
+case "$ARCH" in
+  arm)   PRIMARY_GADGET=arm    ; SECONDARY_GADGET= ;;
+  arm64) PRIMARY_GADGET=arm64  ; SECONDARY_GADGET=arm ;;
+  x86)   PRIMARY_GADGET=x86    ; SECONDARY_GADGET= ;;
+  x64)   PRIMARY_GADGET=x86_64 ; SECONDARY_GADGET=x86 ;;
+esac
 
-  extract "$ZIPFILE" "gadget/libgadget-$ARCH32.so.xz" "$TMP_MODULE_DIR" true
-  mv "$TMP_MODULE_DIR/libgadget-$ARCH32.so.xz" "$TMP_MODULE_DIR/libsecmon32.so.xz"
-  $BUSYBOX_BIN unxz "$TMP_MODULE_DIR/libsecmon32.so.xz"
-fi
+install_gadget() {
+  src_arch=$1
+  dst_name=$2
+  src="$MODPATH/gadget/libgadget-$src_arch.so.xz"
+  if [ -f "$src" ]; then
+    ui_print "- Installing gadget ($src_arch -> $dst_name)"
+    cp -f "$src" "$TMP_MODULE_DIR/$dst_name.xz"
+    $BUSYBOX_BIN unxz -f "$TMP_MODULE_DIR/$dst_name.xz"
+  else
+    ui_print "- Skipping gadget for $src_arch (not bundled in this build)"
+  fi
+}
 
-extract "$ZIPFILE" "config.json.example" "$TMP_MODULE_DIR" true
+install_gadget "$PRIMARY_GADGET" "libsecmon.so"
+[ -n "$SECONDARY_GADGET" ] && [ "$IS64BIT" = true ] && install_gadget "$SECONDARY_GADGET" "libsecmon32.so"
+
+# The bundled .xz files have served their purpose; remove them from the
+# installed module so we don't waste space on disk.
+rm -rf "$MODPATH/gadget"
+
+# Surface the example config alongside the runtime config path so users
+# can `cp config.json.example config.json` without copying out of /data/adb.
+[ -f "$MODPATH/config.json.example" ] && cp -f "$MODPATH/config.json.example" "$TMP_MODULE_DIR/config.json.example"
 
 ui_print "- Writing default gadget config (script mode)"
 echo '{"interaction":{"type":"script","path":"/data/local/tmp/libsec/script.js"}}' > "$TMP_MODULE_DIR/libsecmon.config.so"

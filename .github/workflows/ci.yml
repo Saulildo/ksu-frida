@@ -37,17 +37,17 @@ jobs:
         run: |
           echo "── out/ ──"
           ls -la out/ || true
-          echo "── zip listing ──"
-          find out -maxdepth 1 -name "*.zip" -print
-      - name: Upload Zygisk Module Zip
+          echo "── unpacked module tree ──"
+          find out/magisk_module_release -maxdepth 2 -print
+      # GitHub artifact upload always wraps the supplied path in a single
+      # zip layer. By pointing it at the *unpacked* staging directory
+      # (rather than the already-built .zip) we avoid the zip-inside-zip
+      # download experience: the artifact zip itself IS the flashable
+      # Magisk module - unzipping the artifact gives module.prop /
+      # customize.sh / zygisk/<abi>.so / webroot/ / gadget/ ready to flash.
+      - name: Upload Module
         uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
         with:
-          name: ${{ steps.module-meta.outputs.name }}-${{ steps.module-meta.outputs.version }}-zygisk
-          path: out/${{ steps.module-meta.outputs.name }}-${{ steps.module-meta.outputs.version }}-release.zip
+          name: ${{ steps.module-meta.outputs.name }}-${{ steps.module-meta.outputs.version }}
+          path: out/magisk_module_release/
           if-no-files-found: error
-      - name: Upload Unpacked Staging (debug)
-        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
-        with:
-          name: ${{ steps.module-meta.outputs.name }}-${{ steps.module-meta.outputs.version }}-zygisk-unpacked
-          path: out/magisk_module_release
-          if-no-files-found: warn

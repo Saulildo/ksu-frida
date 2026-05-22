@@ -4,8 +4,8 @@ ext {
     moduleName = "voidwalker"
     moduleAuthor = "electrondefuser"
     moduleDescription = "Walk the shadows of the kernel, remain undetected by the Watch"
-    moduleVersion = "v1.10.0"
-    moduleVersionCode = 13
+    moduleVersion = "v1.10.1"
+    moduleVersionCode = 14
 
     // Frida
     fridaVersion = "17.4.0"

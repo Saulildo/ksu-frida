@@ -1,9 +1,7 @@
 import org.apache.tools.ant.filters.FixCrLfFilter
 import org.apache.tools.ant.filters.ReplaceTokens
 
-import java.nio.file.Paths
 import java.nio.file.Files
-import java.security.MessageDigest
 
 plugins {
     id "de.undercouch.download" version "5.4.0"
@@ -50,6 +48,14 @@ android {
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
 
+        // Be explicit about the ABIs we want in the staging output. Without
+        // this, AGP can default to a 64-bit-only filter and the generated
+        // module zip is missing armeabi-v7a / x86, which then breaks
+        // Zygisk's per-process ABI lookup at install time.
+        ndk {
+            abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'
+        }
+
         externalNativeBuild {
             ndkBuild {
                 arguments += "MODULE_VERSION_CODE=$moduleVersionCode"
@@ -91,7 +97,6 @@ afterEvaluate {
             from(templatePath) {
                 exclude 'module.prop'
                 exclude 'customize.sh'
-                exclude 'verify.sh'
             }
             from(templatePath) {
                 include 'module.prop'
@@ -107,7 +112,6 @@ afterEvaluate {
             }
             from(templatePath) {
                 include("customize.sh")
-                include("verify.sh")
                 def tokens = [
                         "MODULE_ID": magiskModuleId,
                 ]
@@ -125,22 +129,23 @@ afterEvaluate {
                 into 'gadget'
             }
             doLast {
-                fileTree("$magiskDir/lib").visit { f ->
-                    if (!f.directory) return
-                    def srcPath = Paths.get("${f.file.absolutePath}/libzygiskfrida.so")
-                    def dstPath = Paths.get("$magiskDir/lib/${f.path}.so")
-                    Files.move(srcPath, dstPath)
-                    new File("$magiskDir/lib/${f.path}").deleteDir()
-                }
-
-                fileTree("$magiskDir").visit { f ->
-                    if (f.directory) return
-
-                    def md = MessageDigest.getInstance("SHA-256")
-                    f.file.eachByte 4096, { bytes, size ->
-                        md.update(bytes, 0, size)
+                // Move the per-ABI shared object out of lib/<abi>/ into the
+                // canonical Magisk Zygisk layout: zygisk/<abi>.so. Magisk
+                // auto-extracts that into $MODPATH/zygisk/ at install time
+                // and the Zygisk loader picks the right ABI per process,
+                // so customize.sh no longer needs to do any lib placement.
+                def libDir = file("$magiskDir/lib")
+                def zygiskDir = file("$magiskDir/zygisk")
+                zygiskDir.mkdirs()
+                if (libDir.exists()) {
+                    libDir.listFiles().findAll { it.directory }.each { abiDir ->
+                        def src = new File(abiDir, "libzygiskfrida.so")
+                        if (src.exists()) {
+                            def dst = new File(zygiskDir, "${abiDir.name}.so")
+                            Files.move(src.toPath(), dst.toPath())
+                        }
                     }
-                    file(f.file.path + ".sha256sum").text = md.digest().encodeHex()
+                    libDir.deleteDir()
                 }
             }
         }
