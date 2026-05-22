@@ -1,12 +1,12 @@
 #include "inject.h"
 
-#include <cstddef>
-#include <unistd.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 #include <chrono>
 #include <cinttypes>
+#include <cstddef>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -16,6 +16,9 @@
 #include "config.h"
 #include "log.h"
 #include "child_gating.h"
+#include "sanitizer.h"
+#include "soinfo_hide.h"
+#include "atexit_hide.h"
 #include "xdl.h"
 #include "remapper.h"
 
@@ -79,7 +82,7 @@ static bool copy_file(const char *src, const char *dst) {
     char buf[65536];
     ssize_t n;
     while ((n = read(in_fd, buf, sizeof(buf))) > 0) {
-        if (write(out_fd, buf, (size_t)n) != n) {
+        if (write(out_fd, buf, static_cast<size_t>(n)) != n) {
             LOGE("stage: write failed for %s", dst);
             close(in_fd);
             close(out_fd);
@@ -92,23 +95,38 @@ static bool copy_file(const char *src, const char *dst) {
     return true;
 }
 
-static std::string stage_gadget(const std::string &app_name, const std::string &src_lib_path) {
+// Disguised filenames used for the on-disk staging copy of a payload library.
+// These are picked so that:
+//   1. /proc/self/fd/* readlinks (memfd-style detection) show "jit-cache.so"
+//      instead of "libfrida-agent-64.so" / "libgadget.so".
+//   2. /proc/self/maps shows a path that looks like a JIT artifact rather
+//      than a security/instrumentation library.
+// The Frida gadget locates its config relative to the loaded basename, so
+// "<DST_LIB_NAME>".replace(".so", ".config.so") must be the staged config name.
+static const char *const DST_LIB_NAME = "jit-cache.so";
+static const char *const DST_CFG_NAME = "jit-cache.config.so";
 
+static std::string stage_gadget(const std::string &app_name, const std::string &src_lib_path) {
     std::string stage_dir = "/data/data/" + app_name + "/.cache";
     mkdir(stage_dir.c_str(), 0700);
 
     size_t slash = src_lib_path.rfind('/');
-    std::string lib_name = (slash == std::string::npos) ? src_lib_path : src_lib_path.substr(slash + 1);
-    std::string cfg_name = lib_name;
-    size_t dot = cfg_name.rfind(".so");
-    if (dot != std::string::npos) cfg_name.insert(dot, ".config");
+    std::string src_basename = (slash == std::string::npos)
+                                   ? src_lib_path
+                                   : src_lib_path.substr(slash + 1);
+
+    // Source-side config filename mirrors the source basename (e.g.
+    // libsecmon.so → libsecmon.config.so).
+    std::string src_cfg_name = src_basename;
+    size_t dot = src_cfg_name.rfind(".so");
+    if (dot != std::string::npos) src_cfg_name.insert(dot, ".config");
 
     std::string src_dir = (slash == std::string::npos) ? "." : src_lib_path.substr(0, slash);
-    std::string src_cfg  = src_dir + "/" + cfg_name;
-    std::string dst_lib  = stage_dir + "/" + lib_name;
-    std::string dst_cfg  = stage_dir + "/" + cfg_name;
+    std::string src_cfg = src_dir + "/" + src_cfg_name;
+    std::string dst_lib = stage_dir + "/" + DST_LIB_NAME;
+    std::string dst_cfg = stage_dir + "/" + DST_CFG_NAME;
 
-    LOGI("Staging gadget: %s -> %s", src_lib_path.c_str(), dst_lib.c_str());
+    LOGI("Staging payload: %s -> %s", src_lib_path.c_str(), dst_lib.c_str());
 
     if (!copy_file(src_lib_path.c_str(), dst_lib.c_str())) {
         return "";
@@ -158,6 +176,11 @@ void inject_lib(std::string const &lib_path, std::string const &logContext) {
 static void inject_libs(target_config const &cfg, pid_t pid) {
     wait_for_init(cfg.app_name);
 
+    // Install runtime fingerprint sanitizers BEFORE loading the payload so
+    // any thread renames / abstract sockets emitted by the gadget go through
+    // our scrubbing hooks. Idempotent across multiple targets.
+    install_runtime_sanitizer();
+
     if (cfg.child_gating.enabled) {
         enable_child_gating(cfg.child_gating);
     }
@@ -180,8 +203,14 @@ static void inject_libs(target_config const &cfg, pid_t pid) {
         }
     }
 
-    // Allow Frida's JS engine to fully initialize before post-init cleanup.
+    // Allow Frida's JS engine to fully initialize before we tear down its
+    // visibility footprint. After this point dl_iterate_phdr / soinfo
+    // walkers stop seeing the gadget, and any orphaned atexit handlers
+    // that would otherwise crash __cxa_finalize at shutdown are neutered.
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
+    install_soinfo_hide();
+    scrub_payload_atexit_handlers();
 }
 
 bool check_and_inject(std::string const &app_name) {

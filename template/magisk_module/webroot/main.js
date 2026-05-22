@@ -116,7 +116,8 @@ function renderTargets() {
                     <label>Mode:</label>
                     <select onchange="updateChildGatingMode(${index}, this.value)">
                         <option value="freeze" ${target.child_gating.mode === 'freeze' ? 'selected' : ''}>Freeze</option>
-                        <option value="relax" ${target.child_gating.mode === 'relax' ? 'selected' : ''}>Relax</option>
+                        <option value="kill" ${target.child_gating.mode === 'kill' ? 'selected' : ''}>Kill</option>
+                        <option value="inject" ${target.child_gating.mode === 'inject' ? 'selected' : ''}>Inject</option>
                     </select>
                     <label>Child Libs (one per line):</label>
                     <textarea style="width:100%; height:40px;" onchange="updateChildLibs(${index}, this.value)">${target.child_gating.injected_libraries?.map(l => l.path).join('\n') || ''}</textarea>

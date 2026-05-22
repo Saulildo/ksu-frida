@@ -4,13 +4,8 @@ ext {
     moduleName = "voidwalker"
     moduleAuthor = "electrondefuser"
     moduleDescription = "Walk the shadows of the kernel, remain undetected by the Watch"
-    moduleVersion = "v1.9.1"
-    moduleVersionCode = 12
-
-    // Riru
-    moduleMinRiruApiVersion = 24
-    moduleMinRiruVersionName = "24.0.0"
-    moduleMaxRiruApiVersion = 26
+    moduleVersion = "v1.10.0"
+    moduleVersionCode = 13
 
     // Frida
     fridaVersion = "17.4.0"
