@@ -1,12 +1,12 @@
 #include "inject.h"
 
-#include <cstddef>
-#include <unistd.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 #include <chrono>
 #include <cinttypes>
+#include <cstddef>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -82,7 +82,7 @@ static bool copy_file(const char *src, const char *dst) {
     char buf[65536];
     ssize_t n;
     while ((n = read(in_fd, buf, sizeof(buf))) > 0) {
-        if (write(out_fd, buf, (size_t)n) != n) {
+        if (write(out_fd, buf, static_cast<size_t>(n)) != n) {
             LOGE("stage: write failed for %s", dst);
             close(in_fd);
             close(out_fd);
@@ -107,7 +107,6 @@ static const char *const DST_LIB_NAME = "jit-cache.so";
 static const char *const DST_CFG_NAME = "jit-cache.config.so";
 
 static std::string stage_gadget(const std::string &app_name, const std::string &src_lib_path) {
-
     std::string stage_dir = "/data/data/" + app_name + "/.cache";
     mkdir(stage_dir.c_str(), 0700);
 

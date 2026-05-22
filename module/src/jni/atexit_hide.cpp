@@ -67,7 +67,7 @@ void *resolve_g_array() {
 }
 
 bool make_writable(void *addr, size_t len) {
-    long page = sysconf(_SC_PAGESIZE);
+    auto page = sysconf(_SC_PAGESIZE);
     if (page <= 0) page = 4096;
     auto pmask = static_cast<uintptr_t>(page) - 1;
     uintptr_t start = reinterpret_cast<uintptr_t>(addr) & ~pmask;

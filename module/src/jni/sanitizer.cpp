@@ -56,8 +56,7 @@ const char *const kGenericThreadNames[] = {
     "pool-1-thread-1",
     "GCDaemon",
 };
-const size_t kGenericThreadNamesCount =
-    sizeof(kGenericThreadNames) / sizeof(kGenericThreadNames[0]);
+const size_t kGenericThreadNamesCount = sizeof(kGenericThreadNames) / sizeof(kGenericThreadNames[0]);
 
 // Cheap stable hash so the same input always maps to the same replacement.
 uint32_t fnv1a(const char *s, size_t n) {
@@ -100,17 +99,14 @@ int hooked_pthread_setname_np(pthread_t t, const char *name) {
     return orig_pthread_setname_np(t, name);
 }
 
-// prctl is variadic in Bionic but always reads 5 args from the va_list, so
-// we hook with a fixed 5-arg shape (matches the AArch64 / ARM / x86 ABIs).
-using prctl_5_t = int (*)(int, unsigned long, unsigned long,  // NOLINT(runtime/int)
-                          unsigned long, unsigned long);      // NOLINT(runtime/int)
+// prctl is variadic in Bionic but always reads up to 5 args from the va_list,
+// so we hook with a fixed 5-arg shape. uintptr_t matches `unsigned long` on
+// all four NDK target ABIs without tripping cpplint's runtime/int rule.
+using prctl_5_t = int (*)(int, uintptr_t, uintptr_t, uintptr_t, uintptr_t);
 prctl_5_t orig_prctl = nullptr;
 
-int hooked_prctl(int option,
-                 unsigned long a2,                    // NOLINT(runtime/int)
-                 unsigned long a3,                    // NOLINT(runtime/int)
-                 unsigned long a4,                    // NOLINT(runtime/int)
-                 unsigned long a5) {                  // NOLINT(runtime/int)
+int hooked_prctl(int option, uintptr_t a2, uintptr_t a3,
+                 uintptr_t a4, uintptr_t a5) {
     if (option == PR_SET_NAME && a2 != 0) {
         const char *name = reinterpret_cast<const char *>(a2);
         const char *sanitized = sanitize_thread_name(name);
@@ -118,7 +114,7 @@ int hooked_prctl(int option,
             LOGD("[sanitizer] prctl(PR_SET_NAME) '%s' -> '%s'",
                  name, sanitized);
             return orig_prctl(option,
-                              reinterpret_cast<unsigned long>(sanitized),
+                              reinterpret_cast<uintptr_t>(sanitized),
                               a3, a4, a5);
         }
     }
