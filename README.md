@@ -36,7 +36,7 @@ runtime fingerprints:
 | Detection vector                                            | How VoidWalker hides it |
 |-------------------------------------------------------------|--------------------------|
 | `frida-server` process name in `/proc/*/cmdline`            | Not used (loader runs in-process) |
-| `libfrida-agent.so` / `libgadget.so` in `/proc/self/maps`   | Staging copy renamed to `jit-cache.so`; original mapping anonymised by `remap_lib` after dlopen |
+| `libfrida-agent.so` / `libgadget.so` in `/proc/self/maps`   | Staging copy renamed to `jit-cache.so`; original mapping anonymised by `remap_lib` after dlopen; `/proc/self/maps` is also returned via a memfd-filtered view |
 | `gum-js-loop` / `gmain` / `gdbus*` in `/proc/<tid>/comm`    | Runtime hooks on `pthread_setname_np` and `prctl(PR_SET_NAME)` rewrite suspicious names to vanilla Android thread labels |
 | `frida-agent-64.so` in `/proc/self/fd/*` readlinks          | Staged file basename is `jit-cache.so`, so any memfd-style readlink shows the JIT artifact name |
 | `frida_agent_main` symbol via `dlsym` / memory scan         | Rebranded gadget from `knox-frida-patcher` (no upstream symbol) |
@@ -45,6 +45,11 @@ runtime fingerprints:
 | `re.frida.server` D-Bus name                                | Rebranded gadget                |
 | Abstract Unix sockets containing `frida`                    | Runtime hooks on `bind()` and `connect()` rewrite the abstract-namespace name with a stable hash so in-process IPC keeps working |
 | `.frida` / `frida-` temp paths                              | Staging directory is `/data/data/<pkg>/.cache/`; bundled gadget is at `/data/local/tmp/libsec/` |
+| `rwxp` JIT pages in `/proc/self/maps`                       | `open` / `openat` hook downgrades `rwxp` to `r-xp` in the filtered maps view returned to the caller |
+| Module enumeration via `dl_iterate_phdr`                    | After Frida finishes initialising, the loader unlinks the gadget from the linker's private `solist` (mappings preserved via `size_=0` trick); a `dl_iterate_phdr` filter hook serves as fallback |
+| Direct linker `solist` walking                              | Same `solist` unlink covers private linker walkers (resolves Bionic linker internals via xDL `.symtab` lookup) |
+| Dangling atexit handlers pointing into hidden modules       | Walks Bionic's `_ZL7g_array` and replaces orphaned entries with a no-op so `__cxa_finalize` doesn't crash and so handler enumeration cannot use them as a tell |
+| `PHH_*` GSI environment variables                           | Cleared from `environ` during the post-load scrub |
 | Library remapping (Fridagisk-style)                         | `remapper.cpp` copies each segment to a fresh anon mmap and `mremap`s it over the original to strip path/inode |
 
 ## How to use the module
@@ -89,11 +94,27 @@ Implementation lives in
 
 Even with a renamed gadget, Frida's runtime can still leak a few hardcoded
 identifiers (thread names from GUM / GLib, abstract Unix sockets in some
-configurations). VoidWalker installs Dobby-based inline hooks on
-`pthread_setname_np`, `prctl(PR_SET_NAME)`, `bind()` and `connect()` *before*
-the payload is loaded and rewrites any frida-/gum-/gmain-/gdbus-flavored
-strings on the fly. See
-[`module/src/jni/sanitizer.cpp`](module/src/jni/sanitizer.cpp).
+configurations, `rwxp` JIT pages, lingering atexit registrations).
+VoidWalker installs Dobby-based inline hooks on `pthread_setname_np`,
+`prctl(PR_SET_NAME)`, `bind()`, `connect()`, `open()` and `openat()` *before*
+the payload is loaded and rewrites any frida-/gum-/gmain-/gdbus-flavoured
+strings on the fly.
+
+After the gadget finishes initialising the loader runs a post-load scrub
+that unlinks the staged payload from the Bionic linker's private `solist`
+(memory mappings preserved so worker threads keep executing), filters
+`dl_iterate_phdr` as a fallback, neutralises orphaned `atexit` handlers,
+and clears PHH-GSI environment variables. See
+[`module/src/jni/sanitizer.cpp`](module/src/jni/sanitizer.cpp),
+[`module/src/jni/soinfo_hide.cpp`](module/src/jni/soinfo_hide.cpp) and
+[`module/src/jni/atexit_hide.cpp`](module/src/jni/atexit_hide.cpp).
+
+The `solist` unlink and atexit scrub techniques were inspired by
+[PerformanC/Treat-Wheel-Zygisk](https://github.com/PerformanC/Treat-Wheel-Zygisk)
+(AGPLv3); they are reimplemented here as independent clean-room code that
+references AOSP `bionic/linker/linker.cpp` and `bionic/libc/bionic/atexit.cpp`
+as primary sources and reuses the in-tree xDL `.symtab` resolver instead of
+porting the AGPLv3 ELF parser.
 
 ### Configuration
 

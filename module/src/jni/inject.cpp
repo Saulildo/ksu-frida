@@ -17,6 +17,8 @@
 #include "log.h"
 #include "child_gating.h"
 #include "sanitizer.h"
+#include "soinfo_hide.h"
+#include "atexit_hide.h"
 #include "xdl.h"
 #include "remapper.h"
 
@@ -202,8 +204,14 @@ static void inject_libs(target_config const &cfg, pid_t pid) {
         }
     }
 
-    // Allow Frida's JS engine to fully initialize before post-init cleanup.
+    // Allow Frida's JS engine to fully initialize before we tear down its
+    // visibility footprint. After this point dl_iterate_phdr / soinfo
+    // walkers stop seeing the gadget, and any orphaned atexit handlers
+    // that would otherwise crash __cxa_finalize at shutdown are neutered.
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
+    install_soinfo_hide();
+    scrub_payload_atexit_handlers();
 }
 
 bool check_and_inject(std::string const &app_name) {
