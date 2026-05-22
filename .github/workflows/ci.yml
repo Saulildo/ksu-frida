@@ -3,9 +3,11 @@ on:
   push:
     branches:
       - main
+      - voidwalker
   pull_request:
     branches:
       - main
+      - voidwalker
   workflow_dispatch:
 
 jobs:
@@ -27,7 +29,7 @@ jobs:
           echo "version=$MODULE_VERSION" >> "$GITHUB_OUTPUT"
           echo "name=$MODULE_NAME"       >> "$GITHUB_OUTPUT"
           echo "Building $MODULE_NAME $MODULE_VERSION"
-      - name: Build Release (Zygisk + Riru)
+      - name: Build Release
         run: |
           chmod +x ./gradlew
           ./gradlew :module:assembleRelease
@@ -37,24 +39,15 @@ jobs:
           ls -la out/ || true
           echo "── zip listing ──"
           find out -maxdepth 1 -name "*.zip" -print
-      # Primary deliverable: the Zygisk flavor zip (flashable via Magisk / KernelSU / APatch).
       - name: Upload Zygisk Module Zip
         uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
         with:
           name: ${{ steps.module-meta.outputs.name }}-${{ steps.module-meta.outputs.version }}-zygisk
-          path: out/${{ steps.module-meta.outputs.name }}-${{ steps.module-meta.outputs.version }}-zygisk-release.zip
+          path: out/${{ steps.module-meta.outputs.name }}-${{ steps.module-meta.outputs.version }}-release.zip
           if-no-files-found: error
-      # Secondary deliverable: the Riru flavor zip for legacy Magisk setups.
-      - name: Upload Riru Module Zip
-        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
-        with:
-          name: ${{ steps.module-meta.outputs.name }}-${{ steps.module-meta.outputs.version }}-riru
-          path: out/${{ steps.module-meta.outputs.name }}-${{ steps.module-meta.outputs.version }}-riru-release.zip
-          if-no-files-found: error
-      # Optional: keep the unpacked staging dirs around for debugging.
-      - name: Upload Unpacked Zygisk Staging (debug)
+      - name: Upload Unpacked Staging (debug)
         uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
         with:
           name: ${{ steps.module-meta.outputs.name }}-${{ steps.module-meta.outputs.version }}-zygisk-unpacked
-          path: out/magisk_module_zygisk_release
+          path: out/magisk_module_release
           if-no-files-found: warn

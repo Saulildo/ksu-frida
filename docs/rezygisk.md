@@ -34,7 +34,7 @@ shared object that exports the standard Zygisk module entry point. The build
 output of this module follows that convention exactly:
 
 ```
-voidwalker-vX.Y.Z-zygisk-release.zip
+voidwalker-vX.Y.Z-release.zip
 └── zygisk/
     ├── arm64-v8a.so
     ├── armeabi-v7a.so
@@ -55,8 +55,3 @@ Smoke-tested loader paths:
 
 If you hit an issue under any Zygisk implementation, attach
 `adb logcat -s VoidWalker` output to the bug report.
-
-## Riru flavor
-
-The Riru flavor is unaffected by Zygisk implementations - it is loaded by
-`riru-core` directly. It targets Riru API 24-26.

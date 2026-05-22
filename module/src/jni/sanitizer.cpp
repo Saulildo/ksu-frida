@@ -1,6 +1,7 @@
 #include "sanitizer.h"
 
 #include <dlfcn.h>
+#include <dobby.h>
 #include <fcntl.h>
 #include <pthread.h>
 #include <sys/prctl.h>
@@ -16,8 +17,6 @@
 #include <cstdio>
 #include <cstring>
 #include <string>
-
-#include <dobby.h>
 
 #include "log.h"
 

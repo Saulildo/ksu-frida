@@ -1,16 +1,15 @@
 #include "soinfo_hide.h"
 
 #include <dlfcn.h>
+#include <dobby.h>
 #include <link.h>
-#include <stdlib.h>
 #include <unistd.h>
 
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
-
-#include <dobby.h>
 
 #include "log.h"
 #include "xdl.h"

@@ -2,7 +2,7 @@
 
 > Walk the shadows of the kernel, remain undetected by the Watch.
 
-VoidWalker is a Zygisk / Riru module that injects a Frida gadget (or any other
+VoidWalker is a Zygisk module that injects a Frida gadget (or any other
 `.so`) into the address space of selected Android applications, while actively
 hiding the loader's fingerprints from in-app detection.
 
@@ -21,8 +21,6 @@ hiding the loader's fingerprints from in-app detection.
 - Control over the timing of the injection (configurable per-app start-up
   delay) so apps that scan at launch can be stepped past.
 - Allows loading multiple arbitrary libraries into the process.
-- A [Riru](https://github.com/RikkaApps/Riru) flavor is also built for legacy
-  Magisk setups that still use Riru rather than Zygisk.
 - Compatible with [Rezygisk](docs/rezygisk.md) and the Rezygisk CSO loader -
   no source changes required.
 
@@ -59,9 +57,7 @@ runtime fingerprints:
 - Zygisk available and enabled (Magisk, Rezygisk, Zygisk-Next, or KernelSU's built-in Zygisk)
 
 ### Quick start
-- Download the latest release from the [Release Page](https://github.com/Saulildo/ksu-frida/releases)\
-  If you are using Riru instead of Zygisk choose the riru flavor zip. Otherwise
-  choose the normal one.
+- Download the latest release from the [Release Page](https://github.com/Saulildo/ksu-frida/releases).
 - Transfer the zip to your device and install it via Magisk (or KernelSU /
   APatch).
 - Reboot after install.
@@ -131,15 +127,14 @@ For Rezygisk-specific notes, see [docs/rezygisk.md](docs/rezygisk.md).
 
 - Checkout the project.
 - Run `./gradlew :module:assembleRelease`.
-- The built Magisk modules will be in the `out` directory:
-  - `out/voidwalker-vX.Y.Z-zygisk-release.zip`
-  - `out/voidwalker-vX.Y.Z-riru-release.zip`
+- The built Magisk module will be in the `out` directory:
+  - `out/voidwalker-vX.Y.Z-release.zip`
 
 You can also build and install the module to your device directly with
-`./gradlew :module:flashAndRebootZygiskRelease`.
+`./gradlew :module:flashAndRebootRelease`.
 
-CI builds both flavors on every push to `main` and uploads the zips as
-workflow artifacts; see
+CI builds the module on every push to `main` / `voidwalker` and uploads the
+zip as a workflow artifact; see
 [.github/workflows/ci.yml](.github/workflows/ci.yml).
 
 ## Caveats

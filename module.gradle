@@ -7,11 +7,6 @@ ext {
     moduleVersion = "v1.10.0"
     moduleVersionCode = 13
 
-    // Riru
-    moduleMinRiruApiVersion = 24
-    moduleMinRiruVersionName = "24.0.0"
-    moduleMaxRiruApiVersion = 26
-
     // Frida
     fridaVersion = "17.4.0"
 }
