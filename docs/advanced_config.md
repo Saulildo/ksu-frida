@@ -4,14 +4,14 @@ For the previous configuration method with various files, see [simple config](si
 It remains a valid method of configuration but the structured configuration method specified here is the preferred
 method in the future and also supports more features.
 
-Both configuration are supported with the advanced config taking precedence in case an app appears in both.
+Both configurations are supported with the advanced config taking precedence in case an app appears in both.
 
 ## Config File
 
-This module is configured via a json config located at `/data/local/tmp/re.zyg.fri/config.json`.
+This module is configured via a json config located at `/data/local/tmp/libsec/config.json`.
 To start off, you can copy the example config
 ```shell
-adb shell 'su -c cp /data/local/tmp/re.zyg.fri/config.json.example /data/local/tmp/re.zyg.fri/config.json'
+adb shell 'su -c cp /data/local/tmp/libsec/config.json.example /data/local/tmp/libsec/config.json'
 ```
 
 Example config
@@ -22,9 +22,10 @@ Example config
             "app_name" : "com.example.package",
             "enabled": true,
             "start_up_delay_ms": 0,
+            "kernel_assisted_evasion": false,
             "injected_libraries": [
                 {
-                    "path": "/data/local/tmp/re.zyg.fri/libgadget.so"
+                    "path": "/data/local/tmp/libsec/libsecmon.so"
                 }
             ],
             "child_gating": {
@@ -32,7 +33,7 @@ Example config
                 "mode": "freeze",
                 "injected_libraries" : [
                     {
-                        "path": "/data/local/tmp/re.zyg.fri/libgadget-child.so"
+                        "path": "/data/local/tmp/libsec/libsecmon-child.so"
                     }
                 ]
             }
@@ -42,50 +43,58 @@ Example config
 ```
 
 The config contains an array of targets. A target contains the configuration for one application
-you want to inject with frida.
+you want to inject the payload into.
 
-In case things are not working as expected, check `adb logcat -s ZygiskFrida` to see if an error is logged.
+In case things are not working as expected, check `adb logcat -s VoidWalker` to see if an error is logged.
 
 ## Target configuration.
 
 ### app_name
-The bundle id of the application you want to inject frida into.
+The bundle id of the application you want to inject the payload into.
 
 ### enabled
 If set to false, then this module will ignore this configuration.
 This is useful if you want to temporarily disable a target while maintaining the config.
 
-
 ### start_up_delay_ms
 Injection of libraries is delayed by this amount in milliseconds.
 
-There are times that you might want to delay the injection of the gadget. Some applications
+There are times that you might want to delay the injection of the payload. Some applications
 might run checks at start up and delaying the injection can help avoid these.
+
+### kernel_assisted_evasion
+Reserved flag, currently informational only. When set to `true` the loader logs that
+kernel-side evasion is requested; the actual evasion path is provided by companion
+kernel modules and is opt-in.
 
 ### injected_libraries
 These are the libraries that will be injected into the process. The libraries
 specified here will be loaded in the order of the array.
 
-The module includes a bundled frida gadgets at `/data/local/tmp/re.zyg.fri/libgadget.so`.\
-`libgadget.so` default architecture is always that of your device.
+The module includes a bundled payload at `/data/local/tmp/libsec/libsecmon.so`.\
+`libsecmon.so` default architecture is always that of your device.
 
-For convenience this module also installs a gadget at `/data/local/tmp/re.zyg.fri/libgadget32.so` for injection into application
-with 32-bit only support on 64-bit devices.
+For convenience this module also installs a 32-bit copy at `/data/local/tmp/libsec/libsecmon32.so`
+for injection into applications with 32-bit-only support on 64-bit devices.
 
-You can adjust the gadget config according to the official [Gadget Doc](https://frida.re/docs/gadget/)
+You can adjust the gadget config according to the official [Gadget Doc](https://frida.re/docs/gadget/).
 
-If you want to use a different frida version or an alternative version you can replace this
-with the path to your own gadget.
+If you want to use a different gadget version or an alternative build you can replace this
+with the path to your own `.so`.
 
-Using this you can also inject arbitrary libraries alongside the gadget or without the gadget if
-you remove it.
+Using this you can also inject arbitrary libraries alongside the payload, or without it if
+you remove it from the array.
 Make sure that the libraries you provide here have the correct file permissions set and are accessible
 by the app itself.
 
-The module will setup file permissions in the complete `re.zyg.fri` directory on install. If you suspect
-a file permission issue, an easy way to check is to place your libraies within the `re.zyg.fri` directory
+The module will set up file permissions in the complete `libsec` directory on install. If you suspect
+a file permission issue, an easy way to check is to place your libraries within the `libsec` directory
 and install the module again (without uninstalling).
 
+> Note: At injection time the loader stages a copy of the payload into the app's
+> private `.cache` directory under the disguised filename `jit-cache.so` so that
+> `/proc/self/maps` and `/proc/self/fd/*` readlinks do not leak the original
+> library name. The staged copy is unlinked immediately after `dlopen`.
 
 ## Child gating configuration (experimental)
 This is an experimental feature and has a lot of caveats! Please read carefully.
@@ -100,7 +109,7 @@ with these child processes.
 There are currently 3 modes in how child gating operates. You can determine by
 setting the mode to either `freeze`, `kill` or `inject`.
 
-Using any of the child gating mode can cause issues properly shutting down the application even with a force close.
+Using any of the child gating modes can cause issues properly shutting down the application even with a force close.
 This can cause issues restarting the app. Manually killing the app can resolve this.
 ```
 adb shell 'su -c kill -9 $(pidof com.example.package)'
@@ -115,25 +124,25 @@ The child process will be killed as soon as it is forked. No code will
 run within the child process.
 
 ### inject
-This mode will inject the `injected_libraries` into the child process similiar to the target configuration.
+This mode will inject the `injected_libraries` into the child process similarly to the target configuration.
 After injection the child process will resume its normal code flow. You may fail to connect to the gadget
 interactively if the child is only doing a quick check and exits.
 
-Please be aware as the child is forked, it already contains all libraries loaded that the parent processs had.
-But as only a single thread returns from the fork the loaded frida gadget thread is not present in the child process.
+Please be aware that as the child is forked, it already contains all libraries loaded that the parent process had.
+But as only a single thread returns from the fork, the loaded gadget thread is not present in the child process.
 
-Reloading the same bundled gadget will fail to start. For this to work you have to load a copy of the gadget.
+Reloading the same bundled payload will fail to start. For this to work you have to load a copy of it.
 You can't load the same file into the process again, a symbolic link won't work either it must be a copy.
 F.e.
 
 ```shell
-adb shell 'su -c cp /data/local/tmp/re.zyg.fri/libgadget.so /data/local/tmp/re.zyg.fri/libgadget-child.so'
+adb shell 'su -c cp /data/local/tmp/libsec/libsecmon.so /data/local/tmp/libsec/libsecmon-child.so'
 ```
 
 The default configuration of a gadget will fail to start due to port conflict with the gadget in the parent process.
 So for the child process you would have to configure the gadget to use a different port.
 
-Create a gadget configuration like this at `/data/local/tmp/re.zyg.fri/libgadget-child.config.so`.
+Create a gadget configuration like this at `/data/local/tmp/libsec/libsecmon-child.config.so`.
 See [Gadget Doc](https://frida.re/docs/gadget/) for reference.
 ```
 {
@@ -150,7 +159,7 @@ See [Gadget Doc](https://frida.re/docs/gadget/) for reference.
 Please take note of the `on_port_conflict: pick-next` which is important in case the parent process forks
 multiple children.
 
-As this is a non-default port gadget you can take a look at `adb logcat -s Frida` to see which ports the
+As this is a non-default port gadget you can take a look at `adb logcat -s VoidWalker` to see which ports the
 child gadget started on.
 
 Then you can connect it for example via

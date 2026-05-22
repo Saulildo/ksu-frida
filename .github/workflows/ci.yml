@@ -6,6 +6,7 @@ on:
   pull_request:
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
   build:
@@ -18,20 +19,42 @@ jobs:
           distribution: temurin
           java-version: 11
           cache: gradle
-      - name: Test Build
+      - name: Read Module Metadata
+        id: module-meta
+        run: |
+          MODULE_VERSION=$(grep "moduleVersion =" module.gradle | awk -F'"' '{print $2}')
+          MODULE_NAME=$(grep "moduleName "    module.gradle | awk -F'"' '{print $2}')
+          echo "version=$MODULE_VERSION" >> "$GITHUB_OUTPUT"
+          echo "name=$MODULE_NAME"       >> "$GITHUB_OUTPUT"
+          echo "Building $MODULE_NAME $MODULE_VERSION"
+      - name: Build Release (Zygisk + Riru)
         run: |
           chmod +x ./gradlew
           ./gradlew :module:assembleRelease
-      - name: Get Module Version
-        id: module-version
+      - name: List Build Outputs
         run: |
-          MODULE_VERSION=$(cat module.gradle | grep "moduleVersion =" | awk -F'"' '{print $2}')
-          echo "version=$MODULE_VERSION" >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
+          echo "── out/ ──"
+          ls -la out/ || true
+          echo "── zip listing ──"
+          find out -maxdepth 1 -name "*.zip" -print
+      # Primary deliverable: the Zygisk flavor zip (flashable via Magisk / KernelSU / APatch).
+      - name: Upload Zygisk Module Zip
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
         with:
-          name: ZygiskFrida-${{ steps.module-version.outputs.version }}-release
+          name: ${{ steps.module-meta.outputs.name }}-${{ steps.module-meta.outputs.version }}-zygisk
+          path: out/${{ steps.module-meta.outputs.name }}-${{ steps.module-meta.outputs.version }}-zygisk-release.zip
+          if-no-files-found: error
+      # Secondary deliverable: the Riru flavor zip for legacy Magisk setups.
+      - name: Upload Riru Module Zip
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
+        with:
+          name: ${{ steps.module-meta.outputs.name }}-${{ steps.module-meta.outputs.version }}-riru
+          path: out/${{ steps.module-meta.outputs.name }}-${{ steps.module-meta.outputs.version }}-riru-release.zip
+          if-no-files-found: error
+      # Optional: keep the unpacked staging dirs around for debugging.
+      - name: Upload Unpacked Zygisk Staging (debug)
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
+        with:
+          name: ${{ steps.module-meta.outputs.name }}-${{ steps.module-meta.outputs.version }}-zygisk-unpacked
           path: out/magisk_module_zygisk_release
-      - uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
-        with:
-          name: ZygiskFrida-${{ steps.module-version.outputs.version }}-riru-release
-          path: out/magisk_module_riru_release
+          if-no-files-found: warn

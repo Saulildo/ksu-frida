@@ -6,9 +6,9 @@ MODULE_ID=@MODULE_ID@
 TMP_MODULE_DIR=/data/local/tmp/libsec
 
 if [ "$FLAVOR" != "zygisk" ] && [ "$FLAVOR" != "riru" ]; then
-  abort "! Unknown ZygiskFrida flavor: $FLAVOR"
+  abort "! Unknown VoidWalker flavor: $FLAVOR"
 else
-  ui_print "- ZygiskFrida flavor: $FLAVOR"
+  ui_print "- VoidWalker flavor: $FLAVOR"
 fi
 
 if [ "$ARCH" != "arm" ] && [ "$ARCH" != "arm64" ] && [ "$ARCH" != "x86" ] && [ "$ARCH" != "x64" ]; then
@@ -82,7 +82,7 @@ if [ "$IS64BIT" = true ]; then
   [ "$FLAVOR" = "riru" ] && mv "$LIB64_DEST/$LIB64_NAME" "${LIB64_DEST}/lib${MODULE_ID}.so"
 fi
 
-ui_print "- Extracting bundled frida gadget"
+ui_print "- Extracting bundled payload"
 
 mkdir -p "$TMP_MODULE_DIR"
 extract "$ZIPFILE" "gadget/libgadget-$ARCH.so.xz" "$TMP_MODULE_DIR" true
@@ -100,7 +100,7 @@ fi
 
 extract "$ZIPFILE" "config.json.example" "$TMP_MODULE_DIR" true
 
-ui_print "- Writing default gadget config (script mode)"
+ui_print "- Writing default payload config (script mode)"
 echo '{"interaction":{"type":"script","path":"/data/local/tmp/libsec/script.js"}}' > "$TMP_MODULE_DIR/libsecmon.config.so"
 
 set_perm_recursive "$TMP_MODULE_DIR" 0 0 0755 0644
